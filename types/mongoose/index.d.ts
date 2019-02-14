@@ -89,7 +89,7 @@ declare module "mongoose" {
   /** The default connection of the mongoose module. */
   export var connection: Connection;
   /** Models registred on the default mongoose connection. */
-  export var models: { [index: string]: Model<any> };
+  export var models: { [index: string]: Model<Document> };
   /** The node-mongodb-native driver Mongoose uses. */
   export var mongo: typeof mongodb;
   /** The Mongoose version */
@@ -139,14 +139,14 @@ declare module "mongoose" {
    * @param collection (optional, induced from model name)
    * @param skipInit whether to skip initialization (defaults to false)
    */
-  export function model<T extends Document>(name: string, schema?: Schema, collection?: string,
-    skipInit?: boolean): Model<T>;
-  export function model<T extends Document, U extends Model<T>>(
+  export function model(name: string, schema?: Schema, collection?: string,
+    skipInit?: boolean): Model<any>;
+  export function model(
     name: string,
     schema?: Schema,
     collection?: string,
     skipInit?: boolean
-  ): U;
+  ): Model<Document>;
 
   /**
    * Returns an array of model names created on this instance of Mongoose.
@@ -161,7 +161,7 @@ declare module "mongoose" {
    * @param opts optional options
    */
   export function plugin(fn: Function): typeof mongoose;
-  export function plugin<T>(fn: Function, opts: T): typeof mongoose;
+  export function plugin(fn: Function, opts: any): typeof mongoose;
 
   /** Sets mongoose options */
   export function set(key: string, value: any): void;
@@ -267,12 +267,7 @@ declare module "mongoose" {
      * @param collection name of mongodb collection (optional) if not given it will be induced from model name
      * @returns The compiled model
      */
-    model<T extends Document>(name: string, schema?: Schema, collection?: string): Model<T>;
-    model<T extends Document, U extends Model<T>>(
-      name: string,
-      schema?: Schema,
-      collection?: string
-    ): U;
+    model(name: string, schema?: Schema, collection?: string): Model<Document>;
 
     /**
      * Removes the model named `name` from this connection, if it exists. You can
@@ -297,7 +292,7 @@ declare module "mongoose" {
     collections: { [index: string]: Collection };
 
     /** A hash of models registered with this connection */
-    models: { [index: string]: Model<any> };
+    models: { [index: string]: Model<Document> };
 
     /**
      * Connection ready state
@@ -710,7 +705,8 @@ declare module "mongoose" {
     constructor(query: Query<T>, options: any): QueryCursor<T>;
 
     /** Marks this cursor as closed. Will stop streaming and subsequent calls to next() will error. */
-    close(callback?: (error: any, result: any) => void): Promise<any>;
+    close(): Promise<boolean>;
+    close(callback?: (error: any, result: any) => void): void;
 
     /**
      * Execute fn for every document in the cursor. If fn returns a promise,
@@ -841,7 +837,7 @@ declare module "mongoose" {
      * @param plugin callback
      */
     plugin(plugin: (schema: Schema) => void): this;
-    plugin<T>(plugin: (schema: Schema, options: T) => void, opts: T): this;
+    plugin<O>(plugin: (schema: Schema, options: O) => void, opts: O): this;
 
     /**
      * Defines a post hook for the document
@@ -850,20 +846,41 @@ declare module "mongoose" {
      * @param method name of the method to hook
      * @param fn callback
      */
-    post<T extends Document>(method: string, fn: (
-      doc: T, next: (err?: NativeError) => void
-    ) => void): this;
+    post(
+      method: string,
+      fn: (error: mongodb.MongoError, doc: Document, next: (err?: NativeError) => void) => void
+    ): this;
 
-    post<T extends Document>(method: string, fn: (
-      error: mongodb.MongoError, doc: T, next: (err?: NativeError) => void
-    ) => void): this;
+    post(
+      method: string,
+      fn: (doc: Document, next: (err?: NativeError) => void) => void
+    ): this;
 
     /**
      * Defines a pre hook for the document.
      */
+    pre<U extends Document = Document>(
+      method: "init" | "validate" | "save" | "remove",
+      fn: HookSyncCallback<U>,
+      errorCb?: HookErrorCallback
+    ): this;
     pre<T extends Document = Document>(
       method: "init" | "validate" | "save" | "remove",
-      fn: HookSyncCallback<T>,
+      parallel: boolean,
+      fn: HookAsyncCallback<T>,
+      errorCb?: HookErrorCallback
+    ): this;
+    pre<U extends Query<unknown> = Query<unknown>>(
+      method:
+        | "count"
+        | "find"
+        | "findOne"
+        | "findOneAndRemove"
+        | "findOneAndUpdate"
+        | "update"
+        | "updateOne"
+        | "updateMany",
+      fn: HookSyncCallback<U>,
       errorCb?: HookErrorCallback
     ): this;
     pre<T extends Query<any> = Query<any>>(
@@ -876,58 +893,38 @@ declare module "mongoose" {
         | "update"
         | "updateOne"
         | "updateMany",
-      fn: HookSyncCallback<T>,
+      parallel: boolean,
+      fn: HookAsyncCallback<T>,
+      errorCb?: HookErrorCallback
+    ): this;
+    pre<U extends Aggregate<unknown> = Aggregate<unknown>>(
+      method: "aggregate",
+      fn: HookSyncCallback<U>,
       errorCb?: HookErrorCallback
     ): this;
     pre<T extends Aggregate<any> = Aggregate<any>>(
       method: "aggregate",
-      fn: HookSyncCallback<T>,
+      parallel: boolean,
+      fn: HookAsyncCallback<T>,
+      errorCb?: HookErrorCallback
+    ): this;
+    pre<U extends Model<Document> = Model<Document>>(
+      method: "insertMany",
+      fn: HookSyncCallback<U>,
       errorCb?: HookErrorCallback
     ): this;
     pre<T extends Model<Document> = Model<Document>>(
       method: "insertMany",
-      fn: HookSyncCallback<T>,
+      parallel: boolean,
+      fn: HookAsyncCallback<T>,
       errorCb?: HookErrorCallback
     ): this;
-    pre<T extends Document | Model<Document> | Query<any> | Aggregate<any>>(
+    pre<U extends Document | Model<Document> | Query<unknown> | Aggregate<unknown>>(
       method: string,
-      fn: HookSyncCallback<T>,
+      fn: HookSyncCallback<U>,
       errorCb?: HookErrorCallback
     ): this;
-
-    pre<T extends Document = Document>(
-      method: "init" | "validate" | "save" | "remove",
-      parallel: boolean,
-      fn: HookAsyncCallback<T>,
-      errorCb?: HookErrorCallback
-    ): this;
-    pre<T extends Query<any> = Query<any>>(
-      method:
-        | "count"
-        | "find"
-        | "findOne"
-        | "findOneAndRemove"
-        | "findOneAndUpdate"
-        | "update"
-        | "updateOne"
-        | "updateMany",
-      parallel: boolean,
-      fn: HookAsyncCallback<T>,
-      errorCb?: HookErrorCallback
-    ): this;
-    pre<T extends Aggregate<any> = Aggregate<any>>(
-      method: "aggregate",
-      parallel: boolean,
-      fn: HookAsyncCallback<T>,
-      errorCb?: HookErrorCallback
-    ): this;
-    pre<T extends Model<Document> = Model<Document>>(
-      method: "insertMany",
-      parallel: boolean,
-      fn: HookAsyncCallback<T>,
-      errorCb?: HookErrorCallback
-    ): this;
-    pre<T extends Document | Model<Document> | Query<any> | Aggregate<any>>(
+    pre<U extends Document | Model<Document> | Query<unknown> | Aggregate<unknown>>(
       method: string,
       parallel: boolean,
       fn: HookAsyncCallback<T>,
@@ -957,8 +954,8 @@ declare module "mongoose" {
      * @param key option name
      * @param value if not passed, the current option value is returned
      */
-    set<T extends keyof SchemaOptions>(key: T): SchemaOptions[T];
-    set<T extends keyof SchemaOptions>(key: T, value: SchemaOptions[T]): this;
+    set<U extends keyof SchemaOptions>(key: U): SchemaOptions[U];
+    set<U extends keyof SchemaOptions>(key: U, value: SchemaOptions[U]): this;
 
     /**
      * Adds static "class" methods to Models compiled from this schema.
@@ -1062,8 +1059,8 @@ declare module "mongoose" {
     /** defaults to "__v" */
     versionKey?: string | boolean;
     /**
-     * By default, Mongoose will automatically 
-     * select() any populated paths. 
+     * By default, Mongoose will automatically
+     * select() any populated paths.
      * To opt out, set selectPopulatedPaths to false.
      */
     selectPopulatedPaths?: boolean;
@@ -1076,7 +1073,7 @@ declare module "mongoose" {
     /**
      * Validation errors in a single nested schema are reported
      * both on the child and on the parent schema.
-     * Set storeSubdocValidationError to false on the child schema 
+     * Set storeSubdocValidationError to false on the child schema
      * to make Mongoose only report the parent error.
      */
     storeSubdocValidationError?: boolean;
@@ -1158,7 +1155,7 @@ declare module "mongoose" {
      * if it should be excluded by default. This setting can be overridden at
      * the query level.
      */
-    select?: boolean | any;
+    select?: any;
 
     /**
      * Setters allow you to transform the data before it gets to the raw mongodb
@@ -1167,10 +1164,10 @@ declare module "mongoose" {
     set?: (value: T, schematype?: this) => T | any;
 
     /** Declares a sparse index. */
-    sparse?: boolean | any;
+    sparse?: boolean;
 
     /** Declares a full text index. */
-    text?: boolean | any;
+    text?: boolean;
 
     /**
      * Adds validator(s) for this document path.
@@ -1185,7 +1182,7 @@ declare module "mongoose" {
       SchemaTypeOpts.AsyncPromiseValidationFn<T> | SchemaTypeOpts.AsyncPromiseValidationOpts)[];
 
     /** Declares an unique index. */
-    unique?: boolean | any;
+    unique?: boolean;
 
 
     /* Options for specific schema types (String, Number, Date, etc.) */
@@ -1432,9 +1429,8 @@ declare module "mongoose" {
     unmarkModified(path: string): void;
 
     /** Sends an update command with this document _id as the query selector.  */
-    update(doc: any, callback?: (err: any, raw: any) => void): Query<any>;
-    update(doc: any, options: ModelUpdateOptions,
-      callback?: (err: any, raw: any) => void): Query<any>;
+    update(doc: mongodb.UpdateQuery<this>, callback?: (err: any, raw: any) => void): Query<this>;
+    update(doc: mongodb.UpdateQuery<this>, options: ModelUpdateOptions, callback?: (err: any, raw: any) => void): Query<unknown>;
 
     /**
      * Executes registered validation rules for this document.
@@ -1878,7 +1874,7 @@ declare module "mongoose" {
     elemMatch(path: string | any | Function, criteria: any): this;
 
     /** Specifies the complementary comparison value for paths specified with where() */
-    equals<T>(val: T): this;
+    equals(val: any): this;
 
     /** Executes the query */
     exec(callback?: (err: NativeError, res: T) => void): Promise<T>;
@@ -1980,15 +1976,15 @@ declare module "mongoose" {
      * Specifies a $gt query condition.
      * When called with one argument, the most recent path passed to where() is used.
      */
-    gt<T>(val: T): this;
-    gt<T>(path: string, val: T): this;
+    gt(val: any): this;
+    gt(path: string, val: any): this;
 
     /**
      * Specifies a $gte query condition.
      * When called with one argument, the most recent path passed to where() is used.
      */
-    gte<T>(val: T): this;
-    gte<T>(path: string, val: T): this;
+    gte(val: any): this;
+    gte(path: string, val: any): this;
 
     /**
      * Sets query hints.
@@ -2022,15 +2018,15 @@ declare module "mongoose" {
      * Specifies a $lt query condition.
      * When called with one argument, the most recent path passed to where() is used.
      */
-    lt<T>(val: T): this;
-    lt<T>(path: string, val: T): this;
+    lt(val: any): this;
+    lt(path: string, val: any): this;
 
     /**
      * Specifies a $lte query condition.
      * When called with one argument, the most recent path passed to where() is used.
      */
-    lte<T>(val: T): this;
-    lte<T>(path: string, val: T): this;
+    lte(val: any): this;
+    lte(path: string, val: any): this;
 
     /**
      * Specifies a $maxDistance query condition.
@@ -2239,8 +2235,7 @@ declare module "mongoose" {
      * Converts this query to a customized, reusable query
      * constructor with all arguments and options retained.
      */
-    toConstructor<T>(): new (...args: any[]) => Query<T> & QueryHelpers;
-    toConstructor<T, Doc extends Document>(): new (...args: any[]) => DocumentQuery<T, Doc> & QueryHelpers;
+    toConstructor(): new (...args: any[]) => DocumentQuery<T, DocType> & QueryHelpers;
 
     /**
      * Declare and/or execute this query as an update() operation.
